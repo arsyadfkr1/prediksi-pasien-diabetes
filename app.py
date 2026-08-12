@@ -1,4 +1,4 @@
-import gradio as gr
+import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -458,414 +458,112 @@ def generate_pdf(state_data):
     return pdf_path
 
 # 6. MEMBANGUN UI & LAYOUT PAPAN ANALISIS (DENGAN GRID)
-komponen_dict = {}
+
+# ============================================================
+# UI STREAMLIT
+# ============================================================
+
+st.set_page_config(page_title="Sistem Prediksi Diabetes", page_icon="🏥", layout="wide")
+
+st.markdown('''
+<style>
+    div[data-testid="stMarkdownContainer"] h1 {
+        background: linear-gradient(135deg, #1a237e 0%, #1565c0 40%, #0277bd 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 12px;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+</style>
+''', unsafe_allow_html=True)
+
+if 'bahasa' not in st.session_state:
+    st.session_state['bahasa'] = 'ID'
+if 'state_prediksi' not in st.session_state:
+    st.session_state['state_prediksi'] = None
+
+col_lang_1, col_lang_2 = st.columns([8, 2])
+with col_lang_2:
+    st.session_state['bahasa'] = st.radio("🌐 Bahasa / Language", ["ID", "EN"], index=0 if st.session_state['bahasa'] == 'ID' else 1, horizontal=True)
+
+bahasa = st.session_state['bahasa']
+teks = teks_ui[bahasa]
+
+if bahasa == 'ID':
+    st.markdown("# 🏥 Sistem Prediksi Rawat Ulang Pasien Diabetes\nMasukkan data rekam medis pasien, lalu pilih algoritma dan klik Jalankan Analisis")
+else:
+    st.markdown("# 🏥 Diabetes Patient Readmission Prediction System\nEnter patient medical data, select an algorithm, then click Run Analysis")
 
 fitur_demografi = [col for col in nama_semua_kolom if 'gl' not in col and 'ide' not in col and col not in ['metformin', 'insulin', 'change', 'diabetesMed']]
 fitur_obat = [col for col in nama_semua_kolom if col not in fitur_demografi]
 
-# 7. CUSTOM CSS PREMIUM
-CUSTOM_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+input_dict = {}
+col_main_left, col_main_right = st.columns([6, 4])
 
-/* ===== GLOBAL ===== */
-body, .gradio-container {
-    font-family: 'Inter', sans-serif !important;
-    background: linear-gradient(135deg, #f0f4f8 0%, #e8edf5 100%) !important;
-}
+with col_main_left:
+    tab1, tab2 = st.tabs(["📊 Demografi & Riwayat" if bahasa == 'ID' else "📊 Demographics & History", "💊 Data Obat" if bahasa == 'ID' else "💊 Medications"])
+    
+    with tab1:
+        col_demo_1, col_demo_2 = st.columns(2)
+        setengah_demo = len(fitur_demografi) // 2
+        for i, col in enumerate(fitur_demografi):
+            target_col = col_demo_1 if i < setengah_demo else col_demo_2
+            with target_col:
+                label_awal = terjemahkan_label(col, bahasa)
+                if pd.api.types.is_object_dtype(df_ref[col]) or pd.api.types.is_string_dtype(df_ref[col]):
+                    opsi = df_ref[col].dropna().unique().tolist()
+                    input_dict[col] = st.selectbox(label_awal, opsi, key=f"input_{col}")
+                else:
+                    input_dict[col] = st.number_input(label_awal, value=0, min_value=0, key=f"input_{col}")
 
-/* ===== HEADER BANNER ===== */
-#app-header {
-    background: linear-gradient(135deg, #1a237e 0%, #1565c0 40%, #0277bd 100%);
-    border-radius: 16px;
-    padding: 28px 36px;
-    margin-bottom: 8px;
-    box-shadow: 0 8px 32px rgba(21, 101, 192, 0.35);
-    position: relative;
-    overflow: hidden;
-}
-#app-header::before {
-    content: '';
-    position: absolute;
-    top: -40px; right: -40px;
-    width: 200px; height: 200px;
-    background: rgba(255,255,255,0.06);
-    border-radius: 50%;
-}
-#app-header::after {
-    content: '';
-    position: absolute;
-    bottom: -60px; left: 30%;
-    width: 280px; height: 160px;
-    background: rgba(255,255,255,0.04);
-    border-radius: 50%;
-}
-#app-header h1 {
-    color: white !important;
-    font-size: 1.75rem !important;
-    font-weight: 700 !important;
-    margin: 0 0 6px 0 !important;
-    letter-spacing: -0.3px;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.2);
-}
-#app-header p {
-    color: rgba(255,255,255,0.82) !important;
-    font-size: 0.9rem !important;
-    margin: 0 !important;
-    font-weight: 400;
-}
+    with tab2:
+        col_obat_1, col_obat_2 = st.columns(2)
+        setengah_obat = len(fitur_obat) // 2
+        for i, col in enumerate(fitur_obat):
+            target_col = col_obat_1 if i < setengah_obat else col_obat_2
+            with target_col:
+                label_awal = terjemahkan_label(col, bahasa)
+                if pd.api.types.is_object_dtype(df_ref[col]) or pd.api.types.is_string_dtype(df_ref[col]):
+                    opsi = ['No', 'Steady', 'Up', 'Down'] if col not in ['change', 'diabetesMed'] else ['No', 'Ch', 'Yes']
+                    input_dict[col] = st.selectbox(label_awal, opsi, key=f"input_{col}")
+                else:
+                    input_dict[col] = st.number_input(label_awal, value=0, min_value=0, key=f"input_{col}")
 
-/* ===== LANGUAGE SELECTOR ===== */
-#lang-selector {
-    background: white;
-    border-radius: 12px;
-    padding: 8px 16px !important;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    margin-bottom: 4px !important;
-}
-
-/* ===== INPUT CARDS ===== */
-.gradio-tabs {
-    border-radius: 14px !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important;
-    overflow: hidden !important;
-    background: white !important;
-}
-.tab-nav button {
-    font-family: 'Inter', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 0.85rem !important;
-    padding: 12px 20px !important;
-    color: #5c6bc0 !important;
-    border-bottom: 3px solid transparent !important;
-    transition: all 0.25s ease !important;
-}
-.tab-nav button.selected {
-    color: #1565c0 !important;
-    border-bottom: 3px solid #1565c0 !important;
-    background: #f0f7ff !important;
-}
-.tab-nav button:hover:not(.selected) {
-    background: #f8f9ff !important;
-    color: #1565c0 !important;
-}
-
-/* ===== INPUTS ===== */
-.gradio-container input, .gradio-container select {
-    font-family: 'Inter', sans-serif !important;
-    border-radius: 8px !important;
-    border: 1.5px solid #e0e7ff !important;
-    transition: border-color 0.2s, box-shadow 0.2s !important;
-}
-.gradio-container input:focus, .gradio-container select:focus {
-    border-color: #1565c0 !important;
-    box-shadow: 0 0 0 3px rgba(21,101,192,0.12) !important;
-}
-label span {
-    font-family: 'Inter', sans-serif !important;
-    font-size: 0.82rem !important;
-    font-weight: 600 !important;
-    color: #37474f !important;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-}
-
-/* ===== RIGHT PANEL (Analysis Card) ===== */
-#analysis-panel {
-    background: white;
-    border-radius: 14px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.09);
-    padding: 20px;
-    min-height: 200px;
-}
-
-/* ===== ALGO SELECTOR ===== */
-#algo-group {
-    background: white;
-    border-radius: 14px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.07);
-    padding: 18px 20px;
-    margin-bottom: 12px;
-}
-
-/* ===== CTA BUTTON ===== */
-#btn-predict {
-    background: linear-gradient(135deg, #1565c0, #0277bd) !important;
-    color: white !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 1rem !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.3px;
-    padding: 16px !important;
-    border-radius: 10px !important;
-    border: none !important;
-    box-shadow: 0 4px 16px rgba(21, 101, 192, 0.4) !important;
-    transition: all 0.25s ease !important;
-    width: 100% !important;
-    margin-top: 10px !important;
-}
-#btn-predict:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 24px rgba(21, 101, 192, 0.5) !important;
-    background: linear-gradient(135deg, #1976d2, #0288d1) !important;
-}
-#btn-predict:active {
-    transform: translateY(0px) !important;
-}
-
-/* ===== DOWNLOAD BUTTON ===== */
-#btn-download {
-    background: linear-gradient(135deg, #2e7d32, #388e3c) !important;
-    color: white !important;
-    font-family: 'Inter', sans-serif !important;
-    font-weight: 600 !important;
-    border-radius: 10px !important;
-    border: none !important;
-    padding: 12px !important;
-    box-shadow: 0 4px 14px rgba(46,125,50,0.35) !important;
-    transition: all 0.25s ease !important;
-    margin-top: 8px !important;
-}
-#btn-download:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 6px 20px rgba(46,125,50,0.45) !important;
-}
-
-/* ===== RADIO BUTTONS ===== */
-.gradio-radio label {
-    border-radius: 8px !important;
-    padding: 8px 14px !important;
-    border: 1.5px solid #e0e7ff !important;
-    transition: all 0.2s !important;
-    font-weight: 500 !important;
-    font-size: 0.85rem !important;
-}
-.gradio-radio label:has(input:checked) {
-    background: #e3f2fd !important;
-    border-color: #1565c0 !important;
-    color: #1565c0 !important;
-}
-
-/* ===== SCROLLBAR ===== */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #f1f5f9; }
-::-webkit-scrollbar-thumb { background: #90a4ae; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #607d8b; }
-
-/* ===== PLOT AREA ===== */
-.gradio-plot {
-    border-radius: 10px !important;
-    overflow: hidden !important;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.06) !important;
-}
-"""
-
-with gr.Blocks(theme=gr.themes.Soft(), css=CUSTOM_CSS) as aplikasi:
-
-    with gr.Row(elem_id="lang-selector"):
-        lang_input = gr.Radio(choices=["ID", "EN"], value="ID", label="🌐 Bahasa / Language")
-
-    ui_title = gr.HTML("""
-    <div id="app-header">
-        <h1>🏥 Sistem Prediksi Rawat Ulang Pasien Diabetes</h1>
-        <p>Masukkan data rekam medis pasien, lalu pilih algoritma dan klik Jalankan Analisis</p>
-    </div>
-    """)
-
-    with gr.Row():
-        # --- KOLOM KIRI (INPUT DATA DENGAN GRID) ---
-        with gr.Column(scale=5):
-            with gr.Tabs():
-                with gr.TabItem("📊 Demografi & Riwayat / Demographics"):
-                    setengah_demo = len(fitur_demografi) // 2
-                    with gr.Row():
-                        with gr.Column():
-                            for col in fitur_demografi[:setengah_demo]:
-                                label_awal = terjemahkan_label(col, "ID")
-                                if pd.api.types.is_object_dtype(df_ref[col]) or pd.api.types.is_string_dtype(df_ref[col]):
-                                    opsi = df_ref[col].dropna().unique().tolist()
-                                    komponen_dict[col] = gr.Dropdown(choices=opsi, label=label_awal, value=opsi[0] if opsi else None)
-                                else:
-                                    komponen_dict[col] = gr.Number(label=label_awal, value=0, minimum=0)
-
-                        with gr.Column():
-                            for col in fitur_demografi[setengah_demo:]:
-                                label_awal = terjemahkan_label(col, "ID")
-                                if pd.api.types.is_object_dtype(df_ref[col]) or pd.api.types.is_string_dtype(df_ref[col]):
-                                    opsi = df_ref[col].dropna().unique().tolist()
-                                    komponen_dict[col] = gr.Dropdown(choices=opsi, label=label_awal, value=opsi[0] if opsi else None)
-                                else:
-                                    komponen_dict[col] = gr.Number(label=label_awal, value=0, minimum=0)
-
-                with gr.TabItem("💊 Data Obat / Medications"):
-                    setengah_obat = len(fitur_obat) // 2
-                    with gr.Row():
-                        with gr.Column():
-                            for col in fitur_obat[:setengah_obat]:
-                                label_awal = terjemahkan_label(col, "ID")
-                                if pd.api.types.is_object_dtype(df_ref[col]) or pd.api.types.is_string_dtype(df_ref[col]):
-                                    opsi = ['No', 'Steady', 'Up', 'Down'] if col not in ['change', 'diabetesMed'] else ['No', 'Ch', 'Yes']
-                                    komponen_dict[col] = gr.Dropdown(choices=opsi, label=label_awal, value='No')
-                                else:
-                                    komponen_dict[col] = gr.Number(label=label_awal, value=0, minimum=0)
-
-                        with gr.Column():
-                            for col in fitur_obat[setengah_obat:]:
-                                label_awal = terjemahkan_label(col, "ID")
-                                if pd.api.types.is_object_dtype(df_ref[col]) or pd.api.types.is_string_dtype(df_ref[col]):
-                                    opsi = ['No', 'Steady', 'Up', 'Down'] if col not in ['change', 'diabetesMed'] else ['No', 'Ch', 'Yes']
-                                    komponen_dict[col] = gr.Dropdown(choices=opsi, label=label_awal, value='No')
-                                else:
-                                    komponen_dict[col] = gr.Number(label=label_awal, value=0, minimum=0)
-
-        # --- KOLOM KANAN (KONTROL PREDIKSI & PAPAN ANALISIS) ---
-        with gr.Column(scale=4):
-            # 1. Kontrol Algoritma dan Tombol Analisis
-            with gr.Group(elem_id="algo-group"):
-                algo_input = gr.Radio(
-                    ["Decision Tree", "K-Nearest Neighbors (KNN)", "⚔️ Bandingkan Keduanya"],
-                    label=teks_ui["ID"]["algo_label"],
-                    value="Decision Tree"
-                )
-                btn_predict = gr.Button(teks_ui["ID"]["btn_predict"], variant="primary", elem_id="btn-predict")
-
-            # 2. Papan Analisis
-            with gr.Group(elem_id="analysis-panel"):
-                placeholder_html = gr.HTML("""
-                <div style="text-align:center; padding: 40px 20px; color: #90a4ae;">
-                    <div style="font-size: 3rem; margin-bottom: 12px;">🔬</div>
-                    <p style="font-size: 1rem; font-weight: 600; color: #78909c; margin:0;">Hasil Analisis Akan Muncul Di Sini</p>
-                    <p style="font-size: 0.82rem; color: #b0bec5; margin-top:6px;">Analysis Results Will Appear Here</p>
-                </div>
-                """)
-                out_result = gr.HTML()
-                out_plot = gr.Plot(label="Grafik Analisis", show_label=False)
-                out_rekomendasi = gr.Markdown()
-                btn_download = gr.Button("📥 Unduh Laporan PDF", variant="secondary", visible=False, elem_id="btn-download")
-                out_pdf = gr.File(label="File PDF Siap Diunduh", visible=False)
-
-    # Menyusun kembali urutan input agar sesuai dengan dataset
-    komponen_input = [komponen_dict[col] for col in nama_semua_kolom]
-    semua_input_prediksi = komponen_input + [algo_input, lang_input]
-
-    def ubah_bahasa(bahasa):
-        teks = teks_ui[bahasa]
+with col_main_right:
+    st.markdown("### 🎛️ " + teks['algo_label'])
+    algoritma = st.radio("", ["Decision Tree", "K-Nearest Neighbors (KNN)", "⚔️ Bandingkan Keduanya" if bahasa == 'ID' else "⚔️ Compare Both"])
+    
+    if st.button(teks['btn_predict'], use_container_width=True, type='primary'):
+        args_input = [input_dict[col] for col in nama_semua_kolom]
+        args_input.append(algoritma)
+        args_input.append(bahasa)
         
-        # HTML untuk Judul Utama
-        if bahasa == "ID":
-            html_judul = """
-            <div id="app-header">
-                <h1>🏥 Sistem Prediksi Rawat Ulang Pasien Diabetes</h1>
-                <p>Masukkan data rekam medis pasien, lalu pilih algoritma dan klik Jalankan Analisis</p>
-            </div>
-            """
-        else:
-            html_judul = """
-            <div id="app-header">
-                <h1>🏥 Diabetes Patient Readmission Prediction System</h1>
-                <p>Enter patient medical data, select an algorithm, then click Run Analysis</p>
-            </div>
-            """
+        with st.spinner("Memproses analisis..." if bahasa == 'ID' else "Processing analysis..."):
+            hasil_teks, fig, teks_rekomendasi, state = prediksi_dinamis(*args_input)
+            st.session_state['state_prediksi'] = state
             
-        updates = [
-            gr.update(value=html_judul),  # ui_title
-            gr.update(value=teks["btn_predict"]),
-            gr.update(label=teks["algo_label"])
-        ]
-        for col in nama_semua_kolom:
-            updates.append(gr.update(label=terjemahkan_label(col, bahasa)))
-        return updates
-
-    semua_komponen_ui = [ui_title, btn_predict, algo_input] + komponen_input
-
-    # State untuk menyimpan data prediksi terakhir
-    state_prediksi = gr.State()
-
-    lang_input.change(fn=ubah_bahasa, inputs=lang_input, outputs=semua_komponen_ui)
-    btn_predict.click(
-        fn=prediksi_dinamis,
-        inputs=semua_input_prediksi,
-        outputs=[out_result, out_plot, out_rekomendasi, state_prediksi]
-    ).then(
-        fn=lambda: (gr.update(visible=False), gr.update(visible=True), gr.update(visible=False, value=None)),
-        outputs=[placeholder_html, btn_download, out_pdf]
-    )
-    btn_download.click(
-        fn=generate_pdf,
-        inputs=[state_prediksi],
-        outputs=[out_pdf]
-    ).then(
-        fn=lambda: gr.update(visible=True),
-        outputs=[out_pdf]
-    )
-
-    # ============================================================
-    # DASHBOARD PERFORMA MODEL
-    # ============================================================
-    with gr.Accordion("📊 Dashboard Performa Model / Model Performance Dashboard", open=False, elem_id="dashboard-accordion"):
-        def build_dashboard_html():
-            def bar(value, color):
-                return f"<div style='background:#eef2f7;border-radius:6px;overflow:hidden;height:10px;margin-top:4px;'><div style='width:{value}%;background:{color};height:100%;border-radius:6px;transition:width 0.6s;'></div></div>"
-
-            def metric_row(label, val_dt, val_knn, color):
-                better = "dt" if val_dt >= val_knn else "knn"
-                star_dt  = " ⭐" if better == "dt"  else ""
-                star_knn = " ⭐" if better == "knn" else ""
-                return f"""
-                <tr>
-                  <td style='padding:8px 12px;font-size:0.82rem;font-weight:600;color:#546e7a;'>{label}</td>
-                  <td style='padding:8px 12px;text-align:center;'>
-                    <span style='font-size:1rem;font-weight:700;color:{color};'>{val_dt:.1f}%</span>{star_dt}
-                    {bar(val_dt, color)}
-                  </td>
-                  <td style='padding:8px 12px;text-align:center;'>
-                    <span style='font-size:1rem;font-weight:700;color:{color};'>{val_knn:.1f}%</span>{star_knn}
-                    {bar(val_knn, color)}
-                  </td>
-                </tr>"""
-
-            html = f"""
-            <div style='font-family:Inter,sans-serif; padding:4px;'>
-              <p style='font-size:0.78rem;color:#90a4ae;margin:0 0 14px 0;'>
-                ℹ️ Dihitung dari <b>sampel 2.000 data uji</b> (test set 20%, random_state=42).
-                Hasil KNN diambil dari sampel untuk menjaga kecepatan aplikasi.
-              </p>
-              <table style='width:100%;border-collapse:collapse;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.07);'>
-                <thead>
-                  <tr style='background:linear-gradient(135deg,#1a237e,#1565c0);'>
-                    <th style='padding:12px 16px;text-align:left;color:white;font-size:0.85rem;'>Metrik / Metric</th>
-                    <th style='padding:12px 16px;text-align:center;color:white;font-size:0.85rem;'>🌳 Decision Tree</th>
-                    <th style='padding:12px 16px;text-align:center;color:white;font-size:0.85rem;'>🎯 K-Nearest Neighbors</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {metric_row('Akurasi / Accuracy', metrik_dt['accuracy'], metrik_knn['accuracy'], '#1565c0')}
-                  {metric_row('Presisi / Precision', metrik_dt['precision'], metrik_knn['precision'], '#6a1b9a')}
-                  {metric_row('Recall / Sensitivity', metrik_dt['recall'], metrik_knn['recall'], '#00838f')}
-                  {metric_row('F1-Score', metrik_dt['f1'], metrik_knn['f1'], '#e65100')}
-                </tbody>
-              </table>
-
-              <div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;'>
-                {''.join([
-                    f"<div style='background:white;border-radius:10px;padding:12px 16px;box-shadow:0 2px 10px rgba(0,0,0,0.06);'>"
-                    f"<p style='font-weight:700;color:#37474f;font-size:0.85rem;margin:0 0 8px 0;'>{'Confusion Matrix'} &mdash; {lbl}</p>"
-                    f"<table style='width:100%;border-collapse:collapse;font-size:0.82rem;'>"
-                    f"<tr><td style='padding:4px;background:#e8f5e9;text-align:center;border-radius:4px 0 0 0;'><b style='color:#2e7d32;'>TP: {cm[1][1]}</b></td>"
-                    f"<td style='padding:4px;background:#ffebee;text-align:center;border-radius:0 4px 0 0;'><b style='color:#c62828;'>FP: {cm[0][1]}</b></td></tr>"
-                    f"<tr><td style='padding:4px;background:#ffebee;text-align:center;border-radius:0 0 0 4px;'><b style='color:#c62828;'>FN: {cm[1][0]}</b></td>"
-                    f"<td style='padding:4px;background:#e8f5e9;text-align:center;border-radius:0 0 4px 0;'><b style='color:#2e7d32;'>TN: {cm[0][0]}</b></td></tr>"
-                    f"</table></div>"
-                    for lbl, cm in [('🌳 Decision Tree', metrik_dt['cm']), ('🎯 KNN', metrik_knn['cm'])]
-                ])}
-              </div>
-
-              <p style='font-size:0.72rem;color:#b0bec5;margin-top:10px;text-align:center;'>
-                TP=True Positive &nbsp;|&nbsp; TN=True Negative &nbsp;|&nbsp; FP=False Positive &nbsp;|&nbsp; FN=False Negative
-              </p>
-            </div>
-            """
-            return html
-
-        dashboard_html = gr.HTML(value=build_dashboard_html())
-
-aplikasi.launch(share=True)
+    st.markdown("---")
+    
+    if st.session_state['state_prediksi'] is not None:
+        state = st.session_state['state_prediksi']
+        args_input = [state['input_values'][i] for i in range(len(nama_semua_kolom))]
+        args_input.append(state['algoritma'])
+        args_input.append(bahasa)
+        hasil_teks, fig, teks_rekomendasi, state_terbaru = prediksi_dinamis(*args_input)
+        
+        st.markdown(hasil_teks, unsafe_allow_html=True)
+        st.pyplot(fig)
+        st.markdown(teks_rekomendasi)
+        
+        pdf_path = generate_pdf(state_terbaru)
+        if pdf_path and os.path.exists(pdf_path):
+            with open(pdf_path, 'rb') as pdf_file:
+                st.download_button(
+                    label="📥 Unduh Laporan PDF" if bahasa == 'ID' else "📥 Download PDF Report",
+                    data=pdf_file,
+                    file_name="Laporan_Prediksi_Diabetes.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+    else:
+        st.info("🔬 Hasil Analisis Akan Muncul Di Sini" if bahasa == 'ID' else "🔬 Analysis Results Will Appear Here")
