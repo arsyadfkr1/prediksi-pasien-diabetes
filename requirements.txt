@@ -1,4 +1,7 @@
-scikit-learn
-pandas
-numpy
 gradio
+matplotlib
+numpy
+pandas
+scikit-learn
+joblib
+reportlab
