@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import joblib
 import warnings
 import io
@@ -18,54 +18,193 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 warnings.filterwarnings('ignore')
 
-print("--- MENYIAPKAN SMART DEPLOYMENT GRADIO (GRID LAYOUT & KONTROL KANAN) ---")
+# ============================================================
+# 1. KONFIGURASI HALAMAN (HARUS PALING ATAS)
+# ============================================================
+st.set_page_config(
+    page_title="Sistem Prediksi Rawat Ulang Pasien Diabetes",
+    page_icon="🏥",
+    layout="wide"
+)
 
-# 1. Load Preprocessor dan Model
-preprocessor = joblib.load('preprocessor_all.pkl')
-knn_model    = joblib.load('knn_model_all.pkl')
-dt_model     = joblib.load('dt_model_all.pkl')
+# ============================================================
+# 2. CUSTOM CSS PREMIUM
+# ============================================================
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-# 2. Baca Struktur Data
-df_ref = pd.read_csv('diabetic_data.csv', na_values='?', nrows=100)
-kolom_sampah = ['encounter_id', 'patient_nbr', 'weight', 'max_glu_serum', 'payer_code', 'medical_specialty', 'readmitted']
-df_ref = df_ref.drop(columns=[col for col in kolom_sampah if col in df_ref.columns])
-nama_semua_kolom = df_ref.columns.tolist()
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif !important;
+}
 
-# 2b. HITUNG METRIK PERFORMA MODEL (pakai sample test set)
-print("--- MENGHITUNG METRIK PERFORMA MODEL ---")
-try:
+/* Header Banner */
+.app-header {
+    background: linear-gradient(135deg, #1a237e 0%, #1565c0 40%, #0277bd 100%);
+    border-radius: 16px;
+    padding: 28px 36px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 32px rgba(21, 101, 192, 0.35);
+    position: relative;
+    overflow: hidden;
+}
+.app-header h1 {
+    color: white !important;
+    font-size: 1.75rem !important;
+    font-weight: 700 !important;
+    margin: 0 0 6px 0 !important;
+    letter-spacing: -0.3px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.app-header p {
+    color: rgba(255,255,255,0.82) !important;
+    font-size: 0.9rem !important;
+    margin: 0 !important;
+    font-weight: 400;
+}
+
+/* Metric Cards */
+.metric-card {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    margin-bottom: 10px;
+}
+
+/* Algo Panel */
+.algo-panel {
+    background: white;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+    margin-bottom: 14px;
+}
+
+/* Result Panel */
+.result-panel {
+    background: white;
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.09);
+    min-height: 200px;
+}
+
+/* Placeholder */
+.placeholder-box {
+    text-align: center;
+    padding: 40px 20px;
+    color: #90a4ae;
+}
+
+/* Button styling override */
+div[data-testid="stButton"] > button {
+    background: linear-gradient(135deg, #1565c0, #0277bd) !important;
+    color: white !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+    border: none !important;
+    box-shadow: 0 4px 16px rgba(21, 101, 192, 0.4) !important;
+    transition: all 0.25s ease !important;
+}
+div[data-testid="stButton"] > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 24px rgba(21, 101, 192, 0.5) !important;
+}
+
+/* Download button */
+div[data-testid="stDownloadButton"] > button {
+    background: linear-gradient(135deg, #2e7d32, #388e3c) !important;
+    color: white !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    border: none !important;
+    box-shadow: 0 4px 14px rgba(46,125,50,0.35) !important;
+}
+
+/* Streamlit tabs */
+button[data-baseweb="tab"] {
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
+}
+
+/* Hide Streamlit branding */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #90a4ae; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #607d8b; }
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# 3. LOAD MODEL & DATA (dengan @st.cache_resource agar cepat)
+# ============================================================
+@st.cache_resource
+def load_models():
+    preprocessor = joblib.load('preprocessor_all.pkl')
+    dt_model = joblib.load('dt_model_all.pkl')
+    try:
+        knn_model = joblib.load('knn_model_all.pkl')
+    except Exception:
+        knn_model = None
+    return preprocessor, dt_model, knn_model
+
+@st.cache_data
+def load_data():
+    kolom_sampah = ['encounter_id', 'patient_nbr', 'weight', 'max_glu_serum',
+                    'payer_code', 'medical_specialty', 'readmitted']
+    df_ref = pd.read_csv('diabetic_data.csv', na_values='?', nrows=100)
+    df_ref = df_ref.drop(columns=[col for col in kolom_sampah if col in df_ref.columns])
+    return df_ref, kolom_sampah
+
+@st.cache_data
+def hitung_metrik_model():
     from sklearn.model_selection import train_test_split
-    df_full = pd.read_csv('diabetic_data.csv', na_values='?', low_memory=False)
-    df_full['target'] = df_full['readmitted'].apply(lambda x: 1 if x == '<30' else 0)
-    df_full = df_full.drop(columns=[c for c in kolom_sampah if c in df_full.columns]).dropna()
-    X_full = df_full.drop(columns=['target'])
-    y_full = df_full['target']
-    _, X_test_raw, _, y_test = train_test_split(X_full, y_full, test_size=0.2, random_state=42)
-    # Gunakan sample 2000 agar KNN tetap cepat
-    sample_idx = X_test_raw.sample(min(2000, len(X_test_raw)), random_state=42).index
-    X_samp = X_test_raw.loc[sample_idx]
-    y_samp = y_test.loc[sample_idx]
-    X_samp_proc = preprocessor.transform(X_samp)
-    pred_dt_eval  = dt_model.predict(X_samp_proc)
-    pred_knn_eval = knn_model.predict(X_samp_proc)
-    def hitung_metrik(y_true, y_pred):
-        return {
-            'accuracy':  round(accuracy_score(y_true, y_pred) * 100, 2),
-            'precision': round(precision_score(y_true, y_pred, zero_division=0) * 100, 2),
-            'recall':    round(recall_score(y_true, y_pred, zero_division=0) * 100, 2),
-            'f1':        round(f1_score(y_true, y_pred, zero_division=0) * 100, 2),
-            'cm':        confusion_matrix(y_true, y_pred).tolist()
-        }
-    metrik_dt  = hitung_metrik(y_samp, pred_dt_eval)
-    metrik_knn = hitung_metrik(y_samp, pred_knn_eval)
-    print(f"✅ Metrik berhasil dihitung (n_sample={len(y_samp)})")
-except Exception as e:
-    print(f"⚠️ Gagal menghitung metrik: {e}")
-    metrik_dt  = {'accuracy': 0, 'precision': 0, 'recall': 0, 'f1': 0, 'cm': [[0,0],[0,0]]}
-    metrik_knn = {'accuracy': 0, 'precision': 0, 'recall': 0, 'f1': 0, 'cm': [[0,0],[0,0]]}
+    kolom_sampah = ['encounter_id', 'patient_nbr', 'weight', 'max_glu_serum',
+                    'payer_code', 'medical_specialty', 'readmitted']
+    try:
+        preprocessor, dt_model, knn_model = load_models()
+        df_full = pd.read_csv('diabetic_data.csv', na_values='?', low_memory=False)
+        df_full['target'] = df_full['readmitted'].apply(lambda x: 1 if x == '<30' else 0)
+        df_full = df_full.drop(columns=[c for c in kolom_sampah if c in df_full.columns]).dropna()
+        X_full = df_full.drop(columns=['target'])
+        y_full = df_full['target']
+        _, X_test_raw, _, y_test = train_test_split(X_full, y_full, test_size=0.2, random_state=42)
+        sample_idx = X_test_raw.sample(min(2000, len(X_test_raw)), random_state=42).index
+        X_samp = X_test_raw.loc[sample_idx]
+        y_samp = y_test.loc[sample_idx]
+        X_samp_proc = preprocessor.transform(X_samp)
+        pred_dt_eval = dt_model.predict(X_samp_proc)
 
+        def hitung(y_true, y_pred):
+            return {
+                'accuracy':  round(accuracy_score(y_true, y_pred) * 100, 2),
+                'precision': round(precision_score(y_true, y_pred, zero_division=0) * 100, 2),
+                'recall':    round(recall_score(y_true, y_pred, zero_division=0) * 100, 2),
+                'f1':        round(f1_score(y_true, y_pred, zero_division=0) * 100, 2),
+                'cm':        confusion_matrix(y_true, y_pred).tolist()
+            }
 
-# 3. KAMUS TERJEMAHAN (Label Kolom)
+        metrik_dt = hitung(y_samp, pred_dt_eval)
+        if knn_model is not None:
+            pred_knn_eval = knn_model.predict(X_samp_proc)
+            metrik_knn = hitung(y_samp, pred_knn_eval)
+        else:
+            metrik_knn = {'accuracy': 0, 'precision': 0, 'recall': 0, 'f1': 0, 'cm': [[0,0],[0,0]]}
+        return metrik_dt, metrik_knn
+    except Exception as e:
+        zero = {'accuracy': 0, 'precision': 0, 'recall': 0, 'f1': 0, 'cm': [[0,0],[0,0]]}
+        return zero, zero
+
+# ============================================================
+# 4. KAMUS & TEKS UI (BILINGUAL)
+# ============================================================
 kamus_kolom = {
     'race': ('Ras / Etnis', 'Race / Ethnicity'),
     'gender': ('Jenis Kelamin', 'Gender'),
@@ -84,7 +223,6 @@ kamus_kolom = {
     'diag_1': ('Diagnosis Utama (Diag 1)', 'Primary Diagnosis (Diag 1)'),
     'diag_2': ('Diagnosis Kedua (Diag 2)', 'Secondary Diagnosis (Diag 2)'),
     'diag_3': ('Diagnosis Ketiga (Diag 3)', 'Additional Diagnosis (Diag 3)'),
-    'max_glu_serum': ('Glukosa Serum Maks', 'Max Glu Serum'),
     'A1Cresult': ('Hasil Tes A1C', 'A1C Result'),
     'metformin': ('Metformin', 'Metformin'),
     'repaglinide': ('Repaglinide', 'Repaglinide'),
@@ -113,15 +251,12 @@ kamus_kolom = {
     'diabetesMed': ('Diberikan Obat Diabetes', 'Diabetes Medication Prescribed'),
 }
 
-# 4. TEKS STATIS & REKOMENDASI (BILINGUAL)
 teks_ui = {
     "ID": {
-        "title": "# 🏥 Sistem Prediksi Diabetes: All-Features (Bilingual)",
         "algo_label": "Pilih Algoritma Klasifikasi",
         "btn_predict": "🔍 Jalankan Analisis",
         "status_high": "🚨 BERISIKO TINGGI (Rawat Ulang <30 Hari)",
         "status_low": "✅ AMAN (Risiko Rendah)",
-        "result_title": "### 📋 Papan Hasil Prediksi",
         "status_text": "Status Pasien",
         "chart_title": "Tingkat Keyakinan Algoritma",
         "chart_safe": "Aman",
@@ -131,12 +266,10 @@ teks_ui = {
         "rec_low": "* 🏠 **Pemulangan Normal:** Pasien dapat dipulangkan sesuai jadwal.\n* 🥗 **Edukasi Gaya Hidup:** Berikan edukasi pola makan diabetes.\n* 📅 **Jadwal Kontrol:** Jadwalkan rawat jalan rutin bulanan."
     },
     "EN": {
-        "title": "# 🏥 Diabetes Prediction System: All-Features (Bilingual)",
         "algo_label": "Select Classification Algorithm",
         "btn_predict": "🔍 Run Analysis",
         "status_high": "🚨 HIGH RISK (Early Readmission <30 Days)",
         "status_low": "✅ SAFE (Low Risk)",
-        "result_title": "### 📋 Prediction Results Board",
         "status_text": "Patient Status",
         "chart_title": "Algorithm Confidence Level",
         "chart_safe": "Safe",
@@ -152,32 +285,30 @@ def terjemahkan_label(kolom, bahasa):
         return kamus_kolom[kolom][0] if bahasa == "ID" else kamus_kolom[kolom][1]
     return kolom.replace('_', ' ').title()
 
-# 5. FUNGSI PREDIKSI DINAMIS & PEMBUATAN GRAFIK
-def prediksi_dinamis(*args):
-    bahasa    = args[-1]
-    algoritma = args[-2]
-    input_values = args[:-2]
-
+# ============================================================
+# 5. FUNGSI PREDIKSI
+# ============================================================
+def prediksi_dinamis(input_values, algoritma, bahasa, preprocessor, dt_model, knn_model, nama_semua_kolom):
     data_dict = {col: [val] for col, val in zip(nama_semua_kolom, input_values)}
-    input_df  = pd.DataFrame(data_dict)
+    input_df = pd.DataFrame(data_dict)
     input_processed = preprocessor.transform(input_df)
-
     teks = teks_ui[bahasa]
 
-    # ================================================================
-    # MODE BANDINGKAN KEDUANYA
-    # ================================================================
     is_compare = algoritma in ["⚔️ Bandingkan Keduanya", "⚔️ Compare Both"]
 
     if is_compare:
-        # Jalankan kedua model
         pred_dt  = dt_model.predict(input_processed)[0]
         prob_dt  = dt_model.predict_proba(input_processed)[0]
-        pred_knn = knn_model.predict(input_processed)[0]
-        prob_knn = knn_model.predict_proba(input_processed)[0]
+        pa_dt    = prob_dt[0]
+        pr_dt    = prob_dt[1] if len(prob_dt) > 1 else (1 - pa_dt)
 
-        pa_dt,  pr_dt  = prob_dt[0],  prob_dt[1]  if len(prob_dt)  > 1 else (1 - prob_dt[0])
-        pa_knn, pr_knn = prob_knn[0], prob_knn[1] if len(prob_knn) > 1 else (1 - prob_knn[0])
+        if knn_model is not None:
+            pred_knn = knn_model.predict(input_processed)[0]
+            prob_knn = knn_model.predict_proba(input_processed)[0]
+            pa_knn   = prob_knn[0]
+            pr_knn   = prob_knn[1] if len(prob_knn) > 1 else (1 - pa_knn)
+        else:
+            pred_knn, pa_knn, pr_knn = pred_dt, pa_dt, pr_dt
 
         st_dt  = teks["status_high"] if pred_dt  == 1 else teks["status_low"]
         st_knn = teks["status_high"] if pred_knn == 1 else teks["status_low"]
@@ -189,56 +320,40 @@ def prediksi_dinamis(*args):
         bg_dt,  bd_dt,  tc_dt  = card_color(pred_dt)
         bg_knn, bd_knn, tc_knn = card_color(pred_knn)
 
-        # Vonis kesepakatan
         if pred_dt == pred_knn:
             if pred_dt == 1:
                 verdict_bg, verdict_bd, verdict_icon = "#ffebee", "#c0392b", "🚨"
-                verdict_text = ("KEDUA ALGORITMA SEPAKAT: PASIEN BERISIKO TINGGI" if bahasa == "ID"
-                                else "BOTH ALGORITHMS AGREE: HIGH RISK PATIENT")
+                verdict_text = "KEDUA ALGORITMA SEPAKAT: PASIEN BERISIKO TINGGI" if bahasa == "ID" else "BOTH ALGORITHMS AGREE: HIGH RISK PATIENT"
             else:
                 verdict_bg, verdict_bd, verdict_icon = "#e8f8f5", "#27ae60", "✅"
-                verdict_text = ("KEDUA ALGORITMA SEPAKAT: PASIEN AMAN" if bahasa == "ID"
-                                else "BOTH ALGORITHMS AGREE: PATIENT IS SAFE")
-            verdict_sub = ("Tingkat kepercayaan tinggi — kedua model memberikan hasil yang sama."
-                           if bahasa == "ID" else
-                           "High confidence — both models produce the same result.")
+                verdict_text = "KEDUA ALGORITMA SEPAKAT: PASIEN AMAN" if bahasa == "ID" else "BOTH ALGORITHMS AGREE: PATIENT IS SAFE"
+            verdict_sub = "Tingkat kepercayaan tinggi — kedua model memberikan hasil yang sama." if bahasa == "ID" else "High confidence — both models produce the same result."
         else:
             verdict_bg, verdict_bd, verdict_icon = "#fff8e1", "#f39c12", "⚠️"
-            verdict_text = ("ALGORITMA TIDAK SEPAKAT — PERLU EVALUASI LANJUT" if bahasa == "ID"
-                            else "ALGORITHMS DISAGREE — FURTHER EVALUATION NEEDED")
-            verdict_sub  = ("Kedua model memberi hasil berbeda. Disarankan konsultasi klinis tambahan."
-                            if bahasa == "ID" else
-                            "Models give conflicting results. Additional clinical consultation is advised.")
+            verdict_text = "ALGORITMA TIDAK SEPAKAT — PERLU EVALUASI LANJUT" if bahasa == "ID" else "ALGORITHMS DISAGREE — FURTHER EVALUATION NEEDED"
+            verdict_sub  = "Kedua model memberi hasil berbeda. Disarankan konsultasi klinis tambahan." if bahasa == "ID" else "Models give conflicting results. Additional clinical consultation is advised."
 
         judul_str = "📋 Papan Hasil Prediksi" if bahasa == "ID" else "📋 Prediction Results Board"
-        dt_label  = "Decision Tree"
-        knn_label = "K-Nearest Neighbors"
-        safe_lbl  = teks['status_text']
-        algo_lbl  = "Algoritma"
         safe_prob = "Prob. Aman" if bahasa == "ID" else "Safe Prob."
         risk_prob = "Prob. Berisiko" if bahasa == "ID" else "Risk Prob."
 
-        hasil_teks = f"""
+        hasil_html = f"""
         <div style='margin-bottom:8px;'>
           <h3 style='color:#2c3e50; margin:0 0 10px 0; font-size:1.05rem;'>{judul_str}</h3>
-
-          <!-- VERDICT BANNER -->
           <div style='background:{verdict_bg}; border:2px solid {verdict_bd}; border-radius:10px; padding:12px 16px; margin-bottom:12px; text-align:center;'>
             <span style='font-size:1.6rem;'>{verdict_icon}</span>
             <p style='color:{verdict_bd}; font-weight:700; font-size:0.95rem; margin:4px 0 2px 0;'>{verdict_text}</p>
             <p style='color:#555; font-size:0.78rem; margin:0;'>{verdict_sub}</p>
           </div>
-
-          <!-- SIDE BY SIDE CARDS -->
           <div style='display:grid; grid-template-columns:1fr 1fr; gap:10px;'>
             <div style='background:{bg_dt}; border-left:4px solid {bd_dt}; border-radius:8px; padding:12px;'>
-              <p style='font-size:0.75rem; font-weight:700; color:{tc_dt}; margin:0 0 6px 0; text-transform:uppercase; letter-spacing:0.5px;'>🌳 {dt_label}</p>
+              <p style='font-size:0.75rem; font-weight:700; color:{tc_dt}; margin:0 0 6px 0; text-transform:uppercase;'>🌳 Decision Tree</p>
               <p style='font-size:0.85rem; font-weight:700; color:{tc_dt}; margin:0 0 4px 0;'>{st_dt}</p>
               <p style='font-size:0.75rem; color:#555; margin:0;'>{safe_prob}: <b>{pa_dt:.1%}</b></p>
               <p style='font-size:0.75rem; color:#555; margin:0;'>{risk_prob}: <b style="color:{bd_dt}">{pr_dt:.1%}</b></p>
             </div>
             <div style='background:{bg_knn}; border-left:4px solid {bd_knn}; border-radius:8px; padding:12px;'>
-              <p style='font-size:0.75rem; font-weight:700; color:{tc_knn}; margin:0 0 6px 0; text-transform:uppercase; letter-spacing:0.5px;'>🎯 {knn_label}</p>
+              <p style='font-size:0.75rem; font-weight:700; color:{tc_knn}; margin:0 0 6px 0; text-transform:uppercase;'>🎯 K-Nearest Neighbors</p>
               <p style='font-size:0.85rem; font-weight:700; color:{tc_knn}; margin:0 0 4px 0;'>{st_knn}</p>
               <p style='font-size:0.75rem; color:#555; margin:0;'>{safe_prob}: <b>{pa_knn:.1%}</b></p>
               <p style='font-size:0.75rem; color:#555; margin:0;'>{risk_prob}: <b style="color:{bd_knn}">{pr_knn:.1%}</b></p>
@@ -247,21 +362,18 @@ def prediksi_dinamis(*args):
         </div>
         """
 
-        # Rekomendasi mayoritas
-        pred_final  = pred_dt  # DT sebagai referensi jika tidak sepakat
-        rek_final   = teks["rec_high"] if pred_final == 1 else teks["rec_low"]
+        rek_final = teks["rec_high"] if pred_dt == 1 else teks["rec_low"]
         teks_rekomendasi = f"{teks['rec_title']}\n{rek_final}"
 
-        # Grafik perbandingan probabilitas
         fig, axes = plt.subplots(1, 2, figsize=(6, 1.8))
         for ax, lbl, pa, pr, tc in [
-            (axes[0], f"🌳 DT",  pa_dt,  pr_dt,  bd_dt),
-            (axes[1], f"🎯 KNN", pa_knn, pr_knn, bd_knn)
+            (axes[0], "🌳 DT",  pa_dt,  pr_dt,  bd_dt),
+            (axes[1], "🎯 KNN", pa_knn, pr_knn, bd_knn)
         ]:
             cats = [teks["chart_safe"], teks["chart_risk"]]
             vals = [pa, pr]
-            cols = ['#2ecc71', '#e74c3c']
-            ax.barh(cats, vals, color=cols, alpha=0.8)
+            cols_color = ['#2ecc71', '#e74c3c']
+            ax.barh(cats, vals, color=cols_color, alpha=0.8)
             ax.set_xlim(0, 1)
             ax.set_title(lbl, fontsize=9, fontweight='bold', color=tc)
             ax.spines['top'].set_visible(False)
@@ -278,21 +390,22 @@ def prediksi_dinamis(*args):
             "pred": int(pred_dt), "prob_aman": float(pa_dt), "prob_risiko": float(pr_dt),
             "rekomendasi": rek_final, "input_values": list(input_values)
         }
-        return hasil_teks, fig, teks_rekomendasi, state
+        return hasil_html, fig, teks_rekomendasi, state
 
-    # ================================================================
-    # MODE SATU ALGORITMA (perilaku lama)
-    # ================================================================
+    # MODE SATU ALGORITMA
     if algoritma == "Decision Tree":
         pred = dt_model.predict(input_processed)[0]
         prob = dt_model.predict_proba(input_processed)[0]
     else:
-        pred = knn_model.predict(input_processed)[0]
-        prob = knn_model.predict_proba(input_processed)[0]
+        if knn_model is not None:
+            pred = knn_model.predict(input_processed)[0]
+            prob = knn_model.predict_proba(input_processed)[0]
+        else:
+            pred = dt_model.predict(input_processed)[0]
+            prob = dt_model.predict_proba(input_processed)[0]
 
     prob_aman   = prob[0]
     prob_risiko = prob[1] if len(prob) > 1 else (1 - prob_aman)
-
     status      = teks["status_high"] if pred == 1 else teks["status_low"]
     rekomendasi = teks["rec_high"]    if pred == 1 else teks["rec_low"]
 
@@ -301,12 +414,12 @@ def prediksi_dinamis(*args):
     else:
         bg_color, border_color, text_color = "#e8f8f5", "#2ecc71", "#27ae60"
 
-    judul_bersih = teks['result_title'].replace('### ', '')
-    hasil_teks = f"""
-    <div style='background-color: {bg_color}; border-left: 5px solid {border_color}; padding: 10px 15px; border-radius: 5px; margin-bottom: 6px;'>
-        <h3 style='color: {text_color}; margin: 0 0 6px 0; font-size: 1.1rem;'>{judul_bersih}</h3>
-        <p style='font-size: 14px; margin: 0;'><b>{teks['status_text']}</b>: <span style='color: {text_color}; font-weight: bold;'>{status}</span></p>
-        <p style='font-size: 12px; margin: 3px 0 0 0; color: #555;'><b>Algoritma</b>: {algoritma}</p>
+    judul_bersih = "📋 Papan Hasil Prediksi" if bahasa == "ID" else "📋 Prediction Results Board"
+    hasil_html = f"""
+    <div style='background-color:{bg_color}; border-left:5px solid {border_color}; padding:10px 15px; border-radius:8px; margin-bottom:6px;'>
+        <h3 style='color:{text_color}; margin:0 0 6px 0; font-size:1.1rem;'>{judul_bersih}</h3>
+        <p style='font-size:14px; margin:0;'><b>{teks['status_text']}</b>: <span style='color:{text_color}; font-weight:bold;'>{status}</span></p>
+        <p style='font-size:12px; margin:3px 0 0 0; color:#555;'><b>Algoritma</b>: {algoritma}</p>
     </div>
     """
     teks_rekomendasi = f"{teks['rec_title']}\n{rekomendasi}"
@@ -324,17 +437,18 @@ def prediksi_dinamis(*args):
         ax.text(v + 0.02, i, f"{v:.1%}", color='black', va='center', fontweight='bold')
     plt.tight_layout()
 
-    return hasil_teks, fig, teks_rekomendasi, {
+    return hasil_html, fig, teks_rekomendasi, {
         "bahasa": bahasa, "algoritma": algoritma, "status": status,
         "pred": int(pred), "prob_aman": float(prob_aman), "prob_risiko": float(prob_risiko),
         "rekomendasi": rekomendasi, "input_values": list(input_values)
     }
 
-# 6. FUNGSI GENERATE LAPORAN PDF
-def generate_pdf(state_data):
+# ============================================================
+# 6. FUNGSI GENERATE PDF
+# ============================================================
+def generate_pdf(state_data, nama_semua_kolom):
     if not state_data:
         return None
-
     bahasa = state_data["bahasa"]
     algoritma = state_data["algoritma"]
     status = state_data["status"]
@@ -345,7 +459,7 @@ def generate_pdf(state_data):
     input_values = state_data["input_values"]
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    pdf_path = os.path.join(os.path.dirname(__file__), f"laporan_prediksi_{timestamp}.pdf")
+    pdf_path = f"/tmp/laporan_prediksi_{timestamp}.pdf"
 
     doc = SimpleDocTemplate(pdf_path, pagesize=A4,
                             rightMargin=2*cm, leftMargin=2*cm,
@@ -353,21 +467,14 @@ def generate_pdf(state_data):
     styles = getSampleStyleSheet()
     story = []
 
-    # Warna berdasarkan hasil
     risk_color = colors.HexColor('#c0392b') if pred == 1 else colors.HexColor('#27ae60')
-    risk_bg = colors.HexColor('#ffe6e6') if pred == 1 else colors.HexColor('#e8f8f5')
+    risk_bg    = colors.HexColor('#ffe6e6') if pred == 1 else colors.HexColor('#e8f8f5')
 
-    # Style custom
-    judul_style = ParagraphStyle('judul', parent=styles['Title'], fontSize=16,
-                                  textColor=colors.HexColor('#2c3e50'), spaceAfter=4, alignment=TA_CENTER)
-    sub_style = ParagraphStyle('sub', parent=styles['Normal'], fontSize=10,
-                                textColor=colors.HexColor('#7f8c8d'), alignment=TA_CENTER, spaceAfter=12)
-    section_style = ParagraphStyle('section', parent=styles['Heading2'], fontSize=12,
-                                    textColor=colors.HexColor('#2980b9'), spaceBefore=14, spaceAfter=6)
-    body_style = ParagraphStyle('body', parent=styles['Normal'], fontSize=10,
-                                 textColor=colors.HexColor('#2c3e50'), leading=16)
+    judul_style   = ParagraphStyle('judul', parent=styles['Title'], fontSize=16, textColor=colors.HexColor('#2c3e50'), spaceAfter=4, alignment=TA_CENTER)
+    sub_style     = ParagraphStyle('sub', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#7f8c8d'), alignment=TA_CENTER, spaceAfter=12)
+    section_style = ParagraphStyle('section', parent=styles['Heading2'], fontSize=12, textColor=colors.HexColor('#2980b9'), spaceBefore=14, spaceAfter=6)
+    body_style    = ParagraphStyle('body', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#2c3e50'), leading=16)
 
-    # -- HEADER --
     judul = "Laporan Prediksi Pasien Diabetes" if bahasa == "ID" else "Diabetes Patient Prediction Report"
     story.append(Paragraph("🏥 " + judul, judul_style))
     generated_text = f"Dibuat: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')} WIB" if bahasa == "ID" else f"Generated: {datetime.datetime.now().strftime('%B %d, %Y, %H:%M')}"
@@ -375,18 +482,14 @@ def generate_pdf(state_data):
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#2980b9')))
     story.append(Spacer(1, 0.4*cm))
 
-    # -- HASIL PREDIKSI --
     section_title = "Hasil Prediksi" if bahasa == "ID" else "Prediction Result"
     story.append(Paragraph(section_title, section_style))
-
     result_data = [
-        [Paragraph(f"<b>{'Status Pasien' if bahasa == 'ID' else 'Patient Status'}</b>", body_style),
-         Paragraph(f"<font color='{'#c0392b' if pred == 1 else '#27ae60'}'><b>{status}</b></font>", body_style)],
-        [Paragraph(f"<b>Algoritma</b>", body_style), Paragraph(algoritma, body_style)],
-        [Paragraph(f"<b>{'Probabilitas Aman' if bahasa == 'ID' else 'Safe Probability'}</b>", body_style),
-         Paragraph(f"{prob_aman:.1%}", body_style)],
-        [Paragraph(f"<b>{'Probabilitas Berisiko' if bahasa == 'ID' else 'Risk Probability'}</b>", body_style),
-         Paragraph(f"<font color='#c0392b'>{prob_risiko:.1%}</font>", body_style)],
+        [Paragraph(f"<b>{'Status Pasien' if bahasa=='ID' else 'Patient Status'}</b>", body_style),
+         Paragraph(f"<font color='{'#c0392b' if pred==1 else '#27ae60'}'><b>{status}</b></font>", body_style)],
+        [Paragraph("<b>Algoritma</b>", body_style), Paragraph(algoritma, body_style)],
+        [Paragraph(f"<b>{'Probabilitas Aman' if bahasa=='ID' else 'Safe Probability'}</b>", body_style), Paragraph(f"{prob_aman:.1%}", body_style)],
+        [Paragraph(f"<b>{'Probabilitas Berisiko' if bahasa=='ID' else 'Risk Probability'}</b>", body_style), Paragraph(f"<font color='#c0392b'>{prob_risiko:.1%}</font>", body_style)],
     ]
     result_table = Table(result_data, colWidths=[7*cm, 9*cm])
     result_table.setStyle(TableStyle([
@@ -400,11 +503,10 @@ def generate_pdf(state_data):
     story.append(result_table)
     story.append(Spacer(1, 0.5*cm))
 
-    # -- GRAFIK PROBABILITAS --
     fig_buf = io.BytesIO()
-    fig_pdf, ax_pdf = plt.subplots(figsize=(5, 2))
     teks = teks_ui[bahasa]
-    kategori = [teks["chart_safe"], teks["chart_risk"]]
+    fig_pdf, ax_pdf = plt.subplots(figsize=(5, 2))
+    kategori   = [teks["chart_safe"], teks["chart_risk"]]
     nilai_prob = [prob_aman, prob_risiko]
     ax_pdf.barh(kategori, nilai_prob, color=['#2ecc71', '#e74c3c'], alpha=0.85)
     ax_pdf.set_xlim(0, 1)
@@ -420,7 +522,6 @@ def generate_pdf(state_data):
     story.append(RLImage(fig_buf, width=14*cm, height=5.5*cm))
     story.append(Spacer(1, 0.4*cm))
 
-    # -- DATA INPUT PASIEN --
     input_section = "Data Input Pasien" if bahasa == "ID" else "Patient Input Data"
     story.append(Paragraph(input_section, section_style))
     input_table_data = [[Paragraph("<b>Fitur</b>", body_style), Paragraph("<b>Nilai</b>", body_style)]]
@@ -440,7 +541,6 @@ def generate_pdf(state_data):
     story.append(input_table)
     story.append(Spacer(1, 0.5*cm))
 
-    # -- REKOMENDASI MEDIS --
     rec_section = "Rekomendasi Medis" if bahasa == "ID" else "Medical Recommendations"
     story.append(Paragraph(rec_section, section_style))
     rec_lines = [l.strip().lstrip('* ').replace('**', '') for l in rekomendasi_raw.strip().split('\n') if l.strip()]
@@ -457,105 +557,134 @@ def generate_pdf(state_data):
     doc.build(story)
     return pdf_path
 
-# 6. MEMBANGUN UI & LAYOUT PAPAN ANALISIS (DENGAN GRID)
+# ============================================================
+# 7. LOAD SEMUA DATA & MODEL
+# ============================================================
+with st.spinner("🔄 Memuat model dan data..."):
+    preprocessor, dt_model, knn_model = load_models()
+    df_ref, kolom_sampah = load_data()
+    nama_semua_kolom = df_ref.columns.tolist()
+    metrik_dt, metrik_knn = hitung_metrik_model()
+
+fitur_demografi = [col for col in nama_semua_kolom if 'gl' not in col and 'ide' not in col and col not in ['metformin', 'insulin', 'change', 'diabetesMed']]
+fitur_obat = [col for col in nama_semua_kolom if col not in fitur_demografi]
 
 # ============================================================
-# UI STREAMLIT
+# 8. INISIALISASI SESSION STATE
 # ============================================================
-
-st.set_page_config(page_title="Sistem Prediksi Diabetes", page_icon="🏥", layout="wide")
-
-st.markdown('''
-<style>
-    div[data-testid="stMarkdownContainer"] h1 {
-        background: linear-gradient(135deg, #1a237e 0%, #1565c0 40%, #0277bd 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 12px;
-        text-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    }
-</style>
-''', unsafe_allow_html=True)
-
 if 'bahasa' not in st.session_state:
     st.session_state['bahasa'] = 'ID'
 if 'state_prediksi' not in st.session_state:
     st.session_state['state_prediksi'] = None
 
-col_lang_1, col_lang_2 = st.columns([8, 2])
-with col_lang_2:
-    st.session_state['bahasa'] = st.radio("🌐 Bahasa / Language", ["ID", "EN"], index=0 if st.session_state['bahasa'] == 'ID' else 1, horizontal=True)
+# ============================================================
+# 9. HEADER BANNER & LANGUAGE SELECTOR
+# ============================================================
+col_top_1, col_top_2 = st.columns([8, 2])
+with col_top_2:
+    lang_pilihan = st.radio("🌐 Bahasa / Language", ["ID", "EN"],
+                             index=0 if st.session_state['bahasa'] == 'ID' else 1,
+                             horizontal=True, key="lang_selector")
+    st.session_state['bahasa'] = lang_pilihan
 
 bahasa = st.session_state['bahasa']
 teks = teks_ui[bahasa]
 
 if bahasa == 'ID':
-    st.markdown("# 🏥 Sistem Prediksi Rawat Ulang Pasien Diabetes\nMasukkan data rekam medis pasien, lalu pilih algoritma dan klik Jalankan Analisis")
+    st.markdown("""
+    <div class="app-header">
+        <h1>🏥 Sistem Prediksi Rawat Ulang Pasien Diabetes</h1>
+        <p>Masukkan data rekam medis pasien, lalu pilih algoritma dan klik Jalankan Analisis</p>
+    </div>
+    """, unsafe_allow_html=True)
 else:
-    st.markdown("# 🏥 Diabetes Patient Readmission Prediction System\nEnter patient medical data, select an algorithm, then click Run Analysis")
+    st.markdown("""
+    <div class="app-header">
+        <h1>🏥 Diabetes Patient Readmission Prediction System</h1>
+        <p>Enter patient medical data, select an algorithm, then click Run Analysis</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-fitur_demografi = [col for col in nama_semua_kolom if 'gl' not in col and 'ide' not in col and col not in ['metformin', 'insulin', 'change', 'diabetesMed']]
-fitur_obat = [col for col in nama_semua_kolom if col not in fitur_demografi]
+# ============================================================
+# 10. LAYOUT UTAMA: KOLOM KIRI (INPUT) & KOLOM KANAN (KONTROL)
+# ============================================================
+col_kiri, col_kanan = st.columns([5, 4], gap="large")
 
 input_dict = {}
-col_main_left, col_main_right = st.columns([6, 4])
 
-with col_main_left:
-    tab1, tab2 = st.tabs(["📊 Demografi & Riwayat" if bahasa == 'ID' else "📊 Demographics & History", "💊 Data Obat" if bahasa == 'ID' else "💊 Medications"])
-    
-    with tab1:
-        col_demo_1, col_demo_2 = st.columns(2)
+# ---- KOLOM KIRI: Input Data ----
+with col_kiri:
+    tab_demo, tab_obat = st.tabs([
+        "📊 Demografi & Riwayat" if bahasa == 'ID' else "📊 Demographics & History",
+        "💊 Data Obat" if bahasa == 'ID' else "💊 Medications"
+    ])
+
+    with tab_demo:
+        col_d1, col_d2 = st.columns(2)
         setengah_demo = len(fitur_demografi) // 2
         for i, col in enumerate(fitur_demografi):
-            target_col = col_demo_1 if i < setengah_demo else col_demo_2
-            with target_col:
-                label_awal = terjemahkan_label(col, bahasa)
+            target = col_d1 if i < setengah_demo else col_d2
+            with target:
+                label = terjemahkan_label(col, bahasa)
                 if pd.api.types.is_object_dtype(df_ref[col]) or pd.api.types.is_string_dtype(df_ref[col]):
                     opsi = df_ref[col].dropna().unique().tolist()
-                    input_dict[col] = st.selectbox(label_awal, opsi, key=f"input_{col}")
+                    input_dict[col] = st.selectbox(label, opsi, key=f"d_{col}")
                 else:
-                    input_dict[col] = st.number_input(label_awal, value=0, min_value=0, key=f"input_{col}")
+                    input_dict[col] = st.number_input(label, value=0, min_value=0, key=f"d_{col}")
 
-    with tab2:
-        col_obat_1, col_obat_2 = st.columns(2)
+    with tab_obat:
+        col_o1, col_o2 = st.columns(2)
         setengah_obat = len(fitur_obat) // 2
         for i, col in enumerate(fitur_obat):
-            target_col = col_obat_1 if i < setengah_obat else col_obat_2
-            with target_col:
-                label_awal = terjemahkan_label(col, bahasa)
+            target = col_o1 if i < setengah_obat else col_o2
+            with target:
+                label = terjemahkan_label(col, bahasa)
                 if pd.api.types.is_object_dtype(df_ref[col]) or pd.api.types.is_string_dtype(df_ref[col]):
                     opsi = ['No', 'Steady', 'Up', 'Down'] if col not in ['change', 'diabetesMed'] else ['No', 'Ch', 'Yes']
-                    input_dict[col] = st.selectbox(label_awal, opsi, key=f"input_{col}")
+                    input_dict[col] = st.selectbox(label, opsi, key=f"o_{col}")
                 else:
-                    input_dict[col] = st.number_input(label_awal, value=0, min_value=0, key=f"input_{col}")
+                    input_dict[col] = st.number_input(label, value=0, min_value=0, key=f"o_{col}")
 
-with col_main_right:
-    st.markdown("### 🎛️ " + teks['algo_label'])
-    algoritma = st.radio("", ["Decision Tree", "K-Nearest Neighbors (KNN)", "⚔️ Bandingkan Keduanya" if bahasa == 'ID' else "⚔️ Compare Both"])
-    
-    if st.button(teks['btn_predict'], use_container_width=True, type='primary'):
-        args_input = [input_dict[col] for col in nama_semua_kolom]
-        args_input.append(algoritma)
-        args_input.append(bahasa)
-        
+# ---- KOLOM KANAN: Algoritma & Hasil ----
+with col_kanan:
+    # Panel Kontrol Algoritma
+    st.markdown(f"### 🎛️ {teks['algo_label']}")
+
+    pilihan_algo = ["Decision Tree", "K-Nearest Neighbors (KNN)",
+                    "⚔️ Bandingkan Keduanya" if bahasa == 'ID' else "⚔️ Compare Both"]
+    algoritma = st.radio("", pilihan_algo, key="algo_radio")
+
+    if knn_model is None and "KNN" in algoritma:
+        st.warning("⚠️ Model KNN tidak tersedia. Menggunakan Decision Tree.")
+
+    tombol_klik = st.button(teks['btn_predict'], use_container_width=True, type='primary')
+
+    if tombol_klik:
+        input_values = [input_dict[col] for col in nama_semua_kolom]
         with st.spinner("Memproses analisis..." if bahasa == 'ID' else "Processing analysis..."):
-            hasil_teks, fig, teks_rekomendasi, state = prediksi_dinamis(*args_input)
+            hasil_html, fig, teks_rek, state = prediksi_dinamis(
+                input_values, algoritma, bahasa, preprocessor, dt_model, knn_model, nama_semua_kolom
+            )
             st.session_state['state_prediksi'] = state
-            
+
     st.markdown("---")
-    
+
+    # Panel Hasil Analisis
     if st.session_state['state_prediksi'] is not None:
         state = st.session_state['state_prediksi']
-        args_input = [state['input_values'][i] for i in range(len(nama_semua_kolom))]
-        args_input.append(state['algoritma'])
-        args_input.append(bahasa)
-        hasil_teks, fig, teks_rekomendasi, state_terbaru = prediksi_dinamis(*args_input)
-        
-        st.markdown(hasil_teks, unsafe_allow_html=True)
+        # Re-run prediksi dengan bahasa terkini
+        hasil_html, fig, teks_rek, state_terbaru = prediksi_dinamis(
+            state['input_values'], state['algoritma'], bahasa,
+            preprocessor, dt_model, knn_model, nama_semua_kolom
+        )
+
+        st.markdown(hasil_html, unsafe_allow_html=True)
         st.pyplot(fig)
-        st.markdown(teks_rekomendasi)
-        
-        pdf_path = generate_pdf(state_terbaru)
+        plt.close()
+        st.markdown(teks_rek)
+
+        # Tombol Download PDF
+        pdf_path = generate_pdf(state_terbaru, nama_semua_kolom)
         if pdf_path and os.path.exists(pdf_path):
             with open(pdf_path, 'rb') as pdf_file:
                 st.download_button(
@@ -566,4 +695,59 @@ with col_main_right:
                     use_container_width=True
                 )
     else:
-        st.info("🔬 Hasil Analisis Akan Muncul Di Sini" if bahasa == 'ID' else "🔬 Analysis Results Will Appear Here")
+        st.markdown("""
+        <div class="placeholder-box">
+            <div style='font-size:3rem; margin-bottom:12px;'>🔬</div>
+            <p style='font-size:1rem; font-weight:600; color:#78909c; margin:0;'>Hasil Analisis Akan Muncul Di Sini</p>
+            <p style='font-size:0.82rem; color:#b0bec5; margin-top:6px;'>Analysis Results Will Appear Here</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ============================================================
+# 11. DASHBOARD PERFORMA MODEL
+# ============================================================
+with st.expander("📊 Dashboard Performa Model / Model Performance Dashboard", expanded=False):
+    st.caption("ℹ️ Dihitung dari sampel 2.000 data uji (test set 20%, random_state=42). Hasil KNN diambil dari sampel untuk menjaga kecepatan.")
+
+    def bar_html(value, color):
+        return f"<div style='background:#eef2f7;border-radius:6px;overflow:hidden;height:10px;margin-top:4px;'><div style='width:{value}%;background:{color};height:100%;border-radius:6px;'></div></div>"
+
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    metriks = [
+        (col_m1, "🎯 Akurasi", metrik_dt['accuracy'], metrik_knn['accuracy'], "#1565c0"),
+        (col_m2, "📌 Presisi", metrik_dt['precision'], metrik_knn['precision'], "#6a1b9a"),
+        (col_m3, "🔍 Recall",  metrik_dt['recall'],    metrik_knn['recall'],    "#00838f"),
+        (col_m4, "⚖️ F1-Score", metrik_dt['f1'],       metrik_knn['f1'],       "#e65100"),
+    ]
+    for col_met, nama, dt_val, knn_val, clr in metriks:
+        with col_met:
+            st.markdown(f"**{nama}**")
+            st.markdown(f"""
+            <div style='background:white;border-radius:10px;padding:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);'>
+              <p style='font-size:0.8rem;color:#546e7a;margin:0 0 4px;'>🌳 DT: <b style='color:{clr};'>{dt_val:.1f}%</b></p>
+              {bar_html(dt_val, clr)}
+              <p style='font-size:0.8rem;color:#546e7a;margin:8px 0 4px;'>🎯 KNN: <b style='color:{clr};'>{knn_val:.1f}%</b></p>
+              {bar_html(knn_val, clr)}
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("")
+    col_cm1, col_cm2 = st.columns(2)
+    for col_cm, lbl, cm_data in [(col_cm1, "🌳 Decision Tree", metrik_dt['cm']), (col_cm2, "🎯 KNN", metrik_knn['cm'])]:
+        with col_cm:
+            st.markdown(f"**Confusion Matrix — {lbl}**")
+            st.markdown(f"""
+            <div style='background:white;border-radius:10px;padding:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);'>
+              <table style='width:100%;border-collapse:collapse;font-size:0.85rem;'>
+                <tr>
+                  <td style='padding:8px;background:#e8f5e9;text-align:center;border-radius:4px 0 0 0;'><b style='color:#2e7d32;'>TP: {cm_data[1][1]}</b></td>
+                  <td style='padding:8px;background:#ffebee;text-align:center;border-radius:0 4px 0 0;'><b style='color:#c62828;'>FP: {cm_data[0][1]}</b></td>
+                </tr>
+                <tr>
+                  <td style='padding:8px;background:#ffebee;text-align:center;border-radius:0 0 0 4px;'><b style='color:#c62828;'>FN: {cm_data[1][0]}</b></td>
+                  <td style='padding:8px;background:#e8f5e9;text-align:center;border-radius:0 0 4px 0;'><b style='color:#2e7d32;'>TN: {cm_data[0][0]}</b></td>
+                </tr>
+              </table>
+              <p style='font-size:0.7rem;color:#b0bec5;margin-top:6px;text-align:center;'>TP=True Positive | TN=True Negative | FP=False Positive | FN=False Negative</p>
+            </div>
+            """, unsafe_allow_html=True)
