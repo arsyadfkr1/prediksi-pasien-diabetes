@@ -9,6 +9,7 @@ import warnings
 import io
 import os
 import datetime
+import time
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -662,6 +663,7 @@ with col_kanan:
     if tombol_klik:
         input_values = [input_dict[col] for col in nama_semua_kolom]
         with st.spinner("Memproses analisis..." if bahasa == 'ID' else "Processing analysis..."):
+            time.sleep(1.5)
             hasil_html, fig, teks_rek, state = prediksi_dinamis(
                 input_values, algoritma, bahasa, preprocessor, dt_model, knn_model, nama_semua_kolom
             )
