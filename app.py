@@ -214,7 +214,7 @@ def load_id_mappings():
     
     try:
         current_map = None
-        with open('IDs_mapping.csv', 'r', encoding='utf-8') as f:
+        with open('IDS_mapping.csv', 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if not line:
