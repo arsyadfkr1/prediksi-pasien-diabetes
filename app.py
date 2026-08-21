@@ -204,6 +204,49 @@ def hitung_metrik_model():
         return zero, zero
 
 # ============================================================
+# 3b. LOAD ID MAPPINGS DARI IDs_mapping.csv
+# ============================================================
+@st.cache_data
+def load_id_mappings():
+    admission_type_map = {}
+    discharge_disposition_map = {}
+    admission_source_map = {}
+    
+    try:
+        current_map = None
+        with open('IDs_mapping.csv', 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                if 'admission_type_id' in line and 'description' in line:
+                    current_map = admission_type_map
+                    continue
+                elif 'discharge_disposition_id' in line and 'description' in line:
+                    current_map = discharge_disposition_map
+                    continue
+                elif 'admission_source_id' in line and 'description' in line:
+                    current_map = admission_source_map
+                    continue
+                
+                parts = line.split(',', 1)
+                if len(parts) == 2 and parts[0].strip().isdigit() and current_map is not None:
+                    id_num = int(parts[0].strip())
+                    desc = parts[1].strip()
+                    current_map[desc] = id_num
+    except Exception as e:
+        st.warning(f"IDs_mapping.csv tidak ditemukan: {e}")
+    
+    return admission_type_map, discharge_disposition_map, admission_source_map
+
+admission_type_map, discharge_disposition_map, admission_source_map = load_id_mappings()
+id_col_maps = {
+    'admission_type_id': admission_type_map,
+    'discharge_disposition_id': discharge_disposition_map,
+    'admission_source_id': admission_source_map,
+}
+
+# ============================================================
 # 4. KAMUS & TEKS UI (BILINGUAL)
 # ============================================================
 kamus_kolom = {
@@ -630,6 +673,10 @@ with col_kiri:
                 if pd.api.types.is_object_dtype(df_ref[col]) or pd.api.types.is_string_dtype(df_ref[col]):
                     opsi = df_ref[col].dropna().unique().tolist()
                     input_dict[col] = st.selectbox(label, opsi, key=f"d_{col}")
+                elif col in id_col_maps and id_col_maps[col]:
+                    opsi_teks = list(id_col_maps[col].keys())
+                    pilihan = st.selectbox(label, opsi_teks, key=f"d_{col}")
+                    input_dict[col] = id_col_maps[col][pilihan]
                 else:
                     input_dict[col] = st.number_input(label, value=0, min_value=0, key=f"d_{col}")
 
